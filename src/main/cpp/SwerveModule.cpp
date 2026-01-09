@@ -1,70 +1,105 @@
-#include "RobotContainer.h"
-#include <frc/controller/PIDController.h>
-#include <frc/geometry/Rotation2d.h>
-#include <frc/kinematics/SwerveModuleState.h>
-#include <units/angle.h>
-#include <units/velocity.h>
-#include <ctre/phoenix6/controls/DutyCycleOut.hpp>
-#include <ctre/phoenix6/TalonFX.hpp>
+package frc.robot;
 
-SwerveModule::SwerveModule(int driveID, int steerID, int encoderID, double offset)
-    : m_angleOffset(offset), 
-      m_driveMotor(driveID),
-      m_steerMotor(steerID),
-      m_encoder(encoderID),
-      m_steerPID(0.1, 0.0, 0.0002) { 
-    
-    ctre::phoenix6::configs::TalonFXConfiguration driveConfig{};
-    driveConfig.MotorOutput.Inverted = ctre::phoenix6::signals::InvertedValue::CounterClockwise_Positive;
-    m_driveMotor.GetConfigurator().Apply(driveConfig);
+import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.hardware.CANcoder;
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.signals.InvertedValue;
+import com.ctre.phoenix6.controls.DutyCycleOut;
 
-    ctre::phoenix6::configs::TalonFXConfiguration steerConfig{};
-    steerConfig.MotorOutput.Inverted = ctre::phoenix6::signals::InvertedValue::CounterClockwise_Positive; // Test this
-    m_steerMotor.GetConfigurator().Apply(steerConfig);
+import edu.wpi.first.math.controller.PIDController;
+import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.kinematics.SwerveModulePosition;
+import edu.wpi.first.math.kinematics.SwerveModuleState;
 
-    m_steerPID.EnableContinuousInput(-M_PI, M_PI); // Radians
-}
+public class SwerveModule {
+    private final double m_angleOffset;
+    private final TalonFX m_driveMotor;
+    private final TalonFX m_steerMotor;
+    private final CANcoder m_encoder;
+    private final PIDController m_steerPID;
 
-void SwerveModule::SetDesiredState(const frc::SwerveModuleState& state) {
-    auto encoderSignal = m_encoder.GetAbsolutePosition();
-    encoderSignal.Refresh();
-    auto encoderTurns = encoderSignal.GetValue();
-    
-    auto currentAngle = units::radian_t{encoderTurns.value() * 2.0 * M_PI};
-    auto adjustedAngle = currentAngle - units::radian_t{m_angleOffset};
-    
-    auto optimizedState = frc::SwerveModuleState::Optimize(state, frc::Rotation2d(adjustedAngle)); 
-    
-    double driveOutput = optimizedState.speed / AutoConstants::kMaxSpeed;
-    units::radian_t steerError = optimizedState.angle.Radians() - adjustedAngle;
-    double steerOutput = m_steerPID.Calculate(steerError.value(), 0.0);
+    private final DutyCycleOut m_driveRequest = new DutyCycleOut(0);
+    private final DutyCycleOut m_steerRequest = new DutyCycleOut(0);
 
-    m_driveMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{driveOutput});
-    m_steerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{steerOutput});
-}
+    private static final double kWheelDiameter = 0.1016; // meters
+    private static final double kGearRatio = 6.2;
 
-frc::SwerveModulePosition SwerveModule::GetPosition() {
-    auto drivePosition = m_driveMotor.GetPosition().GetValue();
-    constexpr double kWheelDiameter = 0.1016;
-    constexpr double kGearRatio = 6.2;
-    units::meter_t distance = units::meter_t{drivePosition.value() * (kWheelDiameter * M_PI) / kGearRatio};
+    public SwerveModule(int driveID, int steerID, int encoderID, double offset) {
+        m_angleOffset = offset;
+        m_driveMotor = new TalonFX(driveID);
+        m_steerMotor = new TalonFX(steerID);
+        m_encoder = new CANcoder(encoderID);
+        m_steerPID = new PIDController(0.1, 0.0, 0.0002);
 
-    auto encoderTurns = m_encoder.GetAbsolutePosition().GetValue();
-    auto currentAngle = units::radian_t{encoderTurns.value() * 2.0 * M_PI};
-    auto adjustedAngle = currentAngle - units::radian_t{m_angleOffset};
+        // Configure drive motor
+        TalonFXConfiguration driveConfig = new TalonFXConfiguration();
+        driveConfig.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
+        m_driveMotor.getConfigurator().apply(driveConfig);
 
-    return frc::SwerveModulePosition{distance, frc::Rotation2d(adjustedAngle)};
-}
+        // Configure steer motor
+        TalonFXConfiguration steerConfig = new TalonFXConfiguration();
+        steerConfig.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive; // Test this
+        m_steerMotor.getConfigurator().apply(steerConfig);
 
-frc::SwerveModuleState SwerveModule::GetState() {
-    auto driveVelocity = m_driveMotor.GetVelocity().GetValue();
-    constexpr double kWheelDiameter = 0.1016;
-    constexpr double kGearRatio = 6.2;
-    units::meters_per_second_t speed = units::meters_per_second_t{driveVelocity.value() * (kWheelDiameter * M_PI) / kGearRatio};
+        // Enable continuous input for steer PID (wraps around at -π to π)
+        m_steerPID.enableContinuousInput(-Math.PI, Math.PI);
+    }
 
-    auto encoderTurns = m_encoder.GetAbsolutePosition().GetValue();
-    auto currentAngle = units::radian_t{encoderTurns.value() * 2.0 * M_PI};
-    auto adjustedAngle = currentAngle - units::radian_t{m_angleOffset};
+    public void setDesiredState(SwerveModuleState state) {
+        // Get current encoder position
+        var encoderSignal = m_encoder.getAbsolutePosition();
+        encoderSignal.refresh();
+        double encoderTurns = encoderSignal.getValue();
 
-    return frc::SwerveModuleState{speed, frc::Rotation2d(adjustedAngle)};
+        // Convert encoder turns to radians and apply offset
+        double currentAngle = encoderTurns * 2.0 * Math.PI;
+        double adjustedAngle = currentAngle - m_angleOffset;
+
+        // Optimize the state to minimize wheel rotation
+        SwerveModuleState optimizedState = SwerveModuleState.optimize(
+            state, 
+            new Rotation2d(adjustedAngle)
+        );
+
+        // Calculate drive output as percentage of max speed
+        double driveOutput = optimizedState.speedMetersPerSecond / AutoConstants.kMaxSpeed;
+
+        // Calculate steer output using PID
+        double steerError = optimizedState.angle.getRadians() - adjustedAngle;
+        double steerOutput = m_steerPID.calculate(steerError, 0.0);
+
+        // Set motor outputs
+        m_driveMotor.setControl(m_driveRequest.withOutput(driveOutput));
+        m_steerMotor.setControl(m_steerRequest.withOutput(steerOutput));
+    }
+
+    public SwerveModulePosition getPosition() {
+        // Get drive motor position (in rotations)
+        double drivePosition = m_driveMotor.getPosition().getValue();
+        
+        // Convert rotations to meters
+        double distance = drivePosition * (kWheelDiameter * Math.PI) / kGearRatio;
+
+        // Get current angle
+        double encoderTurns = m_encoder.getAbsolutePosition().getValue();
+        double currentAngle = encoderTurns * 2.0 * Math.PI;
+        double adjustedAngle = currentAngle - m_angleOffset;
+
+        return new SwerveModulePosition(distance, new Rotation2d(adjustedAngle));
+    }
+
+    public SwerveModuleState getState() {
+        // Get drive motor velocity (in rotations per second)
+        double driveVelocity = m_driveMotor.getVelocity().getValue();
+        
+        // Convert to meters per second
+        double speed = driveVelocity * (kWheelDiameter * Math.PI) / kGearRatio;
+
+        // Get current angle
+        double encoderTurns = m_encoder.getAbsolutePosition().getValue();
+        double currentAngle = encoderTurns * 2.0 * Math.PI;
+        double adjustedAngle = currentAngle - m_angleOffset;
+
+        return new SwerveModuleState(speed, new Rotation2d(adjustedAngle));
+    }
 }
