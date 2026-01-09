@@ -1,72 +1,92 @@
-#include "Robot.h"
-#include "RobotContainer.h"
+package frc.robot;
 
-RobotContainer* robotContainer;
+import edu.wpi.first.wpilibj.TimedRobot;
+import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
-void Robot::RobotInit() {
-    robotContainer = new RobotContainer();
-    m_chooser.AddOption(kAutoNameDefault, kAutoNameDefault);
-    m_chooser.AddOption(kAutoNameCustom, kAutoNameCustom);
-    m_chooser.SetDefaultOption(kAutoNameDefault, kAutoNameDefault);
-}
+public class Robot extends TimedRobot {
+    private static final String kAutoNameDefault = "Default";
+    private static final String kAutoNameCustom = "Custom";
+    
+    private RobotContainer robotContainer;
+    private final SendableChooser<String> m_chooser = new SendableChooser<>();
+    private String m_autoSelected;
+    private double autoStartTime;
 
-void Robot::RobotPeriodic() {
-    robotContainer->UpdateOdometry();
-}
-
-void Robot::TeleopInit() {
-    robotContainer->m_navx->ZeroYaw();
-}
-
-void Robot::TeleopPeriodic() {
-    double xSpeed = -robotContainer->m_swerveController.GetRawAxis(OperatorConstants::kForwardAxis);
-    double ySpeed = robotContainer->m_swerveController.GetRawAxis(OperatorConstants::kStrafeAxis);
-    double rot = robotContainer->m_swerveController.GetRawAxis(OperatorConstants::kRotationAxis);
-    bool fieldRelative = robotContainer->m_swerveController.GetRawButton(OperatorConstants::kFieldRelativeButton);
-
-    double triggerValue = robotContainer->m_swerveController.GetLeftTriggerAxis();
-    double speedScale = 1.0;
-    if (triggerValue > 0.2) {
-        speedScale = 1.0 - ((triggerValue - 0.2) / 0.8) * 0.8;
+    @Override
+    public void robotInit() {
+        robotContainer = new RobotContainer();
+        m_chooser.addOption(kAutoNameDefault, kAutoNameDefault);
+        m_chooser.addOption(kAutoNameCustom, kAutoNameCustom);
+        m_chooser.setDefaultOption(kAutoNameDefault, kAutoNameDefault);
+        SmartDashboard.putData("Auto choices", m_chooser);
     }
 
-    xSpeed *= speedScale;
-    ySpeed *= speedScale;
-    rot *= speedScale;
+    @Override
+    public void robotPeriodic() {
+        robotContainer.updateOdometry();
+    }
 
-    robotContainer->Drive(xSpeed, ySpeed, rot, fieldRelative);
+    @Override
+    public void teleopInit() {
+        robotContainer.getNavX().zeroYaw();
+    }
 
-    double mechanismY = -robotContainer->m_elevatorController.GetRawAxis(frc::XboxController::Axis::kLeftY);
-    robotContainer->SetMechanismPosition(mechanismY);
-}
+    @Override
+    public void teleopPeriodic() {
+        double xSpeed = -robotContainer.getSwerveController().getRawAxis(OperatorConstants.kForwardAxis);
+        double ySpeed = robotContainer.getSwerveController().getRawAxis(OperatorConstants.kStrafeAxis);
+        double rot = robotContainer.getSwerveController().getRawAxis(OperatorConstants.kRotationAxis);
+        boolean fieldRelative = robotContainer.getSwerveController().getRawButton(OperatorConstants.kFieldRelativeButton);
 
-void Robot::AutonomousInit() {
-    autoStartTime = frc::Timer::GetFPGATimestamp();
-    m_autoSelected = m_chooser.GetSelected();
-}
-
-void Robot::AutonomousPeriodic() {
-    auto now = frc::Timer::GetFPGATimestamp();
-    double elapsed = (now - autoStartTime).value();
-
-    if (elapsed < 2.0) {
-        robotContainer->Drive(0, 0.1, 0, true);
-        auto pose = robotContainer->GetPose(); 
-        if (pose.Y() > 0.5_m) {
-            robotContainer->Drive(0, 0, 0, true);
+        double triggerValue = robotContainer.getSwerveController().getLeftTriggerAxis();
+        double speedScale = 1.0;
+        if (triggerValue > 0.2) {
+            speedScale = 1.0 - ((triggerValue - 0.2) / 0.8) * 0.8;
         }
-    } else {
-        robotContainer->Drive(0, 0, 0, true);
+
+        xSpeed *= speedScale;
+        ySpeed *= speedScale;
+        rot *= speedScale;
+
+        robotContainer.drive(xSpeed, ySpeed, rot, fieldRelative);
+
+        double mechanismY = -robotContainer.getElevatorController().getRawAxis(XboxController.Axis.kLeftY.value);
+        robotContainer.setMechanismPosition(mechanismY);
     }
-}
 
-void Robot::TestInit() {}
-void Robot::TestPeriodic() {}
-void Robot::DisabledInit() {}
-void Robot::DisabledPeriodic() {}
+    @Override
+    public void autonomousInit() {
+        autoStartTime = Timer.getFPGATimestamp();
+        m_autoSelected = m_chooser.getSelected();
+    }
 
-#ifndef RUNNING_FRC_TESTS
-int main() {
-    return frc::StartRobot<Robot>();
+    @Override
+    public void autonomousPeriodic() {
+        double now = Timer.getFPGATimestamp();
+        double elapsed = now - autoStartTime;
+
+        if (elapsed < 2.0) {
+            robotContainer.drive(0, 0.1, 0, true);
+            var pose = robotContainer.getPose();
+            if (pose.getY() > 0.5) {
+                robotContainer.drive(0, 0, 0, true);
+            }
+        } else {
+            robotContainer.drive(0, 0, 0, true);
+        }
+    }
+
+    @Override
+    public void testInit() {}
+
+    @Override
+    public void testPeriodic() {}
+
+    @Override
+    public void disabledInit() {}
+
+    @Override
+    public void disabledPeriodic() {}
 }
-#endif
